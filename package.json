@@ -5,8 +5,18 @@
   "description": "A minimal WordPress theme designed for managing content on the backend while decoupling the frontend for flexible development",
   "keywords": [],
   "license": "ISC",
+  "scripts": {
+    "build": "npx mix --production",
+    "dev": "npx mix watch",
+    "postinstall": "npm run build"
+  },
   "devDependencies": {
     "@prettier/plugin-php": "^0.24.0",
-    "prettier": "^3.6.2"
+    "laravel-mix": "^6.0.49",
+    "prettier": "^3.6.2",
+    "resolve-url-loader": "^5.0.0",
+    "sass": "^1.92.1",
+    "sass-loader": "^12.6.0",
+    "tailwindcss": "^3.4.17"
   }
 }
