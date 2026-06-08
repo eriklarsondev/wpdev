@@ -118,9 +118,13 @@ class StatusConfig
             'wpdev_recheck_api_status'
         );
 
-        $detail = $status['detail']
-            ? esc_html($status['detail'])
-            : 'HTTP ' . (int) $status['code'] . ' &middot; ' . (int) $status['ms'] . ' ms';
+        if ($status['detail']) {
+            $detail = esc_html($status['detail']);
+        } elseif ($status['state'] === 'operational') {
+            $detail = (int) $status['ms'] . ' ms';
+        } else {
+            $detail = 'HTTP ' . (int) $status['code'] . ' &middot; ' . (int) $status['ms'] . ' ms';
+        }
         ?>
         <style>
             .wpdev-status {

@@ -82,6 +82,7 @@ class DocsConfig
                     layout: 'modern',
                     darkMode: false,
                     hideSearch: true,
+                    proxyUrl: '',
                     onBeforeRequest: function (ctx) {
                         try {
                             ctx.requestBuilder.headers.set('X-WP-Nonce', window.wpdevDocs.nonce);
@@ -139,6 +140,19 @@ class DocsConfig
         <?php
     }
 
+    private function loadMarkdown($file, $vars = [])
+    {
+        $path = dirname(__DIR__) . '/docs/' . $file;
+        if (!file_exists($path)) {
+            return '';
+        }
+        $content = file_get_contents($path);
+        foreach ($vars as $key => $value) {
+            $content = str_replace('{{' . $key . '}}', $value, $content);
+        }
+        return trim($content);
+    }
+
     /**
      * builds an OpenAPI 3.0 document from rest_get_server()->get_routes().
      * the spec is generated server-side and embedded directly into the admin
@@ -170,6 +184,9 @@ class DocsConfig
                 continue;
             }
             if (in_array($namespace, $excluded, true)) {
+                continue;
+            }
+            if ($route === '/' . $namespace) {
                 continue;
             }
 
@@ -206,17 +223,37 @@ class DocsConfig
 
         ksort($paths);
 
+        $tag_descriptions = apply_filters('wpdev_openapi_tag_descriptions', [
+            'wpdev/v1' => $this->loadMarkdown('tag-wpdev-v1.md'),
+            'wp/v2'    => $this->loadMarkdown('tag-wp-v2.md'),
+        ]);
+
         $tags = [];
         foreach (array_keys($tag_set) as $ns) {
-            $tags[] = ['name' => $ns];
+            $tag = ['name' => $ns];
+            if (!empty($tag_descriptions[$ns])) {
+                $tag['description'] = $tag_descriptions[$ns];
+            }
+            $tags[] = $tag;
         }
+
+        $site      = get_bloginfo('name');
+        $rest_base = untrailingslashit(rest_url('/'));
+        $version   = (string) (wp_get_theme()->get('Version') ?: '0.0.0');
+
+        $description = $this->loadMarkdown('api-intro.md', [
+            'site'      => $site,
+            'rest_base' => $rest_base,
+            'version'   => $version,
+            'admin_url' => admin_url('admin.php?page=wpdev-api-keys'),
+        ]);
 
         $spec = [
             'openapi' => '3.0.3',
             'info' => [
-                'title' => get_bloginfo('name') . ' — REST API',
-                'version' => (string) (wp_get_theme()->get('Version') ?: '0.0.0'),
-                'description' => 'Auto-generated from the registered WordPress REST API routes.'
+                'title'       => $site . ' — REST API',
+                'version'     => $version,
+                'description' => $description,
             ],
             'servers' => [['url' => untrailingslashit(rest_url('/'))]],
             'tags' => $tags,
@@ -351,7 +388,18 @@ class DocsConfig
             ];
         }
 
-        // error responses, using the shared WP error envelope
+        // success response varies by method
+        if ($method === 'POST') {
+            $created = ['description' => 'Resource created'];
+            if ($item_schema) {
+                $created['content'] = ['application/json' => ['schema' => $item_schema]];
+            }
+            $operation['responses']['201'] = $created;
+        } elseif ($method === 'DELETE') {
+            $operation['responses']['204'] = ['description' => 'Resource deleted'];
+        }
+
+        // error responses
         $has_query = false;
         foreach ($operation['parameters'] as $parameter) {
             if (($parameter['in'] ?? '') === 'query') {
@@ -360,34 +408,48 @@ class DocsConfig
             }
         }
 
-        if ($has_query) {
-            $operation['responses']['400'] = $this->errorResponse('Invalid request parameters');
+        if ($has_query || $body_args) {
+            $operation['responses']['400'] = $this->errorResponse(400, 'Bad request — invalid or missing parameters');
         }
 
-        $operation['responses']['401'] = $this->errorResponse('Missing or invalid API key');
+        $operation['responses']['401'] = $this->errorResponse(401, 'Unauthorized — authentication required');
+        $operation['responses']['403'] = $this->errorResponse(403, 'Forbidden — insufficient permissions');
 
         if (substr($path, -1) === '}') {
-            $operation['responses']['404'] = $this->errorResponse('Resource not found');
+            $operation['responses']['404'] = $this->errorResponse(404, 'Not found — resource does not exist');
         }
+
+        $operation['responses']['500'] = $this->errorResponse(500, 'Internal server error');
 
         ksort($operation['responses']);
 
         return $operation;
     }
 
-    /**
-     * builds an error response object referencing the shared Error schema
-     *
-     * @param string $description
-     *
-     * @return array
-     */
-    private function errorResponse($description)
+    private function errorResponse($status, $description)
     {
+        $examples = [
+            400 => ['code' => 'rest_invalid_param',   'message' => 'Invalid parameter(s): context',             'data' => ['status' => 400]],
+            401 => ['code' => 'rest_not_logged_in',   'message' => 'You are not currently logged in.',          'data' => ['status' => 401]],
+            403 => ['code' => 'rest_forbidden',        'message' => 'Sorry, you are not allowed to do that.',   'data' => ['status' => 403]],
+            404 => ['code' => 'rest_post_invalid_id',  'message' => 'Invalid post ID.',                         'data' => ['status' => 404]],
+            500 => ['code' => 'rest_unknown_error',    'message' => 'An unknown error occurred.',               'data' => ['status' => 500]],
+        ];
+
         return [
             'description' => $description,
             'content' => [
-                'application/json' => ['schema' => ['$ref' => '#/components/schemas/Error']]
+                'application/json' => [
+                    'schema' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'code'    => ['type' => 'string'],
+                            'message' => ['type' => 'string'],
+                            'data'    => ['type' => 'object', 'properties' => ['status' => ['type' => 'integer']]]
+                        ],
+                        'example' => $examples[$status] ?? ['code' => 'rest_error', 'message' => 'An error occurred.', 'data' => ['status' => $status]]
+                    ]
+                ]
             ]
         ];
     }

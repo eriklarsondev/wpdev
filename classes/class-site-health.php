@@ -11,11 +11,7 @@ class SiteHealthConfig
     public function __construct()
     {
         DashboardConfig::remove_widget('dashboard_site_health', 'normal');
-        DashboardConfig::add_widget(
-            'wpdev_site_health',
-            'Site Health',
-            [$this, 'renderWidget']
-        );
+        DashboardConfig::add_widget('wpdev_site_health', 'Site Health', [$this, 'renderWidget']);
     }
 
     /**
@@ -73,9 +69,7 @@ class SiteHealthConfig
                 continue;
             }
 
-            $callback = is_string($test['test'])
-                ? [$instance, 'get_test_' . $test['test']]
-                : $test['test'];
+            $callback = is_string($test['test']) ? [$instance, 'get_test_' . $test['test']] : $test['test'];
 
             if (!is_callable($callback)) {
                 continue;
@@ -113,12 +107,12 @@ class SiteHealthConfig
      */
     private function gradePercent($counts)
     {
-        $total = $counts['good'] + $counts['recommended'] + ($counts['critical'] * 1.5);
+        $total = $counts['good'] + $counts['recommended'] + $counts['critical'] * 1.5;
         if ($total <= 0) {
             return 100;
         }
 
-        $failed = ($counts['recommended'] * 0.5) + ($counts['critical'] * 1.5);
+        $failed = $counts['recommended'] * 0.5 + $counts['critical'] * 1.5;
 
         return max(0, 100 - (int) round(($failed / $total) * 100));
     }
@@ -192,7 +186,7 @@ class SiteHealthConfig
         }
 
         printf(
-            '<p style="margin:0;text-align:right;"><a href="%s">View full report &rarr;</a></p>',
+            '<p style="margin:0;text-align:right;"><a href="%s">View Full Report &rarr;</a></p>',
             esc_url(admin_url('site-health.php'))
         );
     }

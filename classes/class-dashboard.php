@@ -20,9 +20,8 @@ class DashboardConfig
             add_action('wp_dashboard_setup', [$this, 'removeDefaultWidgets'], 999);
         }
 
-        add_filter('get_user_option_meta-box-order_dashboard', [$this, 'lockWidgetOrder']);
+        add_filter('get_user_option_meta-box-order_dashboard', [$this, 'setDefaultWidgetOrder']);
         add_filter('get_user_option_screen_layout_dashboard', [$this, 'lockColumnCount']);
-        add_action('admin_print_footer_scripts-index.php', [$this, 'lockWidgetLayoutAssets'], 999);
     }
 
     /**
@@ -57,85 +56,29 @@ class DashboardConfig
      */
     public function lockColumnCount($columns)
     {
-        if (!apply_filters('wpdev_dashboard_lock_widgets', true)) {
-            return $columns;
-        }
         return 3;
     }
 
     /**
-     * overrides any user drag-and-drop changes by forcing each locked widget
-     * into its assigned column, in the configured order. unlisted widgets
-     * keep their existing position.
+     * sets the default widget column order on first load only. once the user
+     * has saved a layout via drag-and-drop their preference takes over.
      *
      * @param mixed $order
      *
      * @return array
      */
-    public function lockWidgetOrder($order)
+    public function setDefaultWidgetOrder($order)
     {
-        if (!apply_filters('wpdev_dashboard_lock_widgets', true)) {
+        if ($order) {
             return $order;
         }
 
-        $columns = ['normal', 'side', 'column3', 'column4'];
-        $current = is_array($order) ? $order : [];
         $result = [];
-
-        $lockedIds = [];
-        foreach (self::$lockedColumns as $ids) {
-            $lockedIds = array_merge($lockedIds, $ids);
-        }
-
-        foreach ($columns as $col) {
-            $existing = isset($current[$col]) ? array_filter(explode(',', $current[$col])) : [];
-            $kept = array_values(array_diff($existing, $lockedIds));
-            $locked = self::$lockedColumns[$col] ?? [];
-            $result[$col] = implode(',', array_merge($locked, $kept));
+        foreach (self::$lockedColumns as $col => $ids) {
+            $result[$col] = implode(',', $ids);
         }
 
         return $result;
-    }
-
-    /**
-     * disables the jquery sortable on the dashboard so widgets cannot be
-     * dragged between columns, and removes the grab-cursor affordance from
-     * postbox headers. collapse/expand still works.
-     *
-     * @return void
-     */
-    public function lockWidgetLayoutAssets()
-    {
-        if (!apply_filters('wpdev_dashboard_lock_widgets', true)) {
-            return;
-        } ?>
-        <style>
-            #dashboard-widgets .postbox .hndle,
-            #dashboard-widgets .postbox .postbox-header { cursor: default; }
-            #dashboard-widgets .postbox .hndle .handle-order-higher,
-            #dashboard-widgets .postbox .hndle .handle-order-lower { display: none; }
-        </style>
-        <script>
-            jQuery(function ($) {
-                var disable = function () {
-                    if (!$.fn.sortable) { return; }
-                    $('#dashboard-widgets .meta-box-sortables').each(function () {
-                        var $s = $(this);
-                        try {
-                            if ($s.data('ui-sortable') || $s.sortable('instance')) {
-                                $s.sortable('disable');
-                            }
-                        } catch (e) {}
-                    });
-                };
-                disable();
-                [50, 250, 1000].forEach(function (t) { setTimeout(disable, t); });
-                $(document).on('sortcreate', '#dashboard-widgets .meta-box-sortables', function () {
-                    $(this).sortable('disable');
-                });
-            });
-        </script>
-        <?php
     }
 
     /**

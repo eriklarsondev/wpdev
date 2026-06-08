@@ -174,7 +174,7 @@ class EnvironmentConfig
             $detail = rtrim(preg_replace('#^https?://#', '', $frontend), '/') . $path;
         } else {
             $pill = '<span class="wpdev-env-wh-pill warn">Inactive</span>';
-            $detail = !$frontend ? 'no frontend URL' : 'no secret defined';
+            $detail = !$frontend ? 'Frontend URL not set' : 'Webhook secret not defined';
         }
 
         printf(

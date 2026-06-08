@@ -27,8 +27,6 @@ class ApiKeyConfig
         add_action('add_meta_boxes', [$this, 'registerMetaBox']);
         add_action('save_post_' . self::POST_TYPE, [$this, 'saveMetaBox'], 10, 1);
         add_action('edit_form_after_title', [$this, 'renderKeyPreview']);
-        add_action('admin_head', [$this, 'editScreenStyles']);
-        add_action('admin_footer', [$this, 'lockMetaBoxes']);
 
         DashboardConfig::add_widget('wpdev_api_keys', 'API Keys', [$this, 'renderWidget'], 'normal');
     }
@@ -53,7 +51,7 @@ class ApiKeyConfig
      */
     public function registerMetaBox()
     {
-        add_meta_box('wpdev_api_key_status', 'API Key', [$this, 'renderMetaBox'], self::POST_TYPE, 'normal', 'high');
+        add_meta_box('wpdev_api_key_status', 'API Key', [$this, 'renderMetaBox'], self::POST_TYPE, 'side', 'high');
 
         add_meta_box(
             'wpdev_api_key_activity',
@@ -115,64 +113,6 @@ class ApiKeyConfig
                 <span style="color:#646970;">The key is generated when you publish.</span>
             <?php } ?>
         </div>
-        <?php
-    }
-
-    /**
-     * forces the two key meta boxes side by side (status left, activity right)
-     * on the api key edit screen
-     *
-     * @return void
-     */
-    public function editScreenStyles()
-    {
-        $screen = get_current_screen();
-        if (!$screen || $screen->id !== self::POST_TYPE) {
-            return;
-        } ?>
-        <style>
-            #poststuff #wpdev_api_key_status,
-            #poststuff #wpdev_api_key_activity {
-                width:49%;
-                margin:0;
-                box-sizing:border-box;
-                clear:none;
-            }
-            #poststuff #wpdev_api_key_status { float:left; }
-            #poststuff #wpdev_api_key_activity { float:right; }
-            #poststuff #normal-sortables::after { content:""; display:block; clear:both; }
-            #poststuff .postbox .hndle,
-            #poststuff .postbox .postbox-header { cursor:default; }
-            #poststuff .postbox .handle-order-higher,
-            #poststuff .postbox .handle-order-lower { display:none; }
-        </style>
-        <?php
-    }
-
-    /**
-     * disables the drag-and-drop sortable for meta boxes on the api key edit
-     * screen so the locked two-column layout cannot be rearranged
-     *
-     * @return void
-     */
-    public function lockMetaBoxes()
-    {
-        $screen = get_current_screen();
-        if (!$screen || $screen->id !== self::POST_TYPE) {
-            return;
-        } ?>
-        <script>
-            jQuery(function ($) {
-                var lock = function () {
-                    $('.meta-box-sortables').each(function () {
-                        try { $(this).sortable('disable'); } catch (e) {}
-                    });
-                };
-                lock();
-                [100, 400, 1000, 2000].forEach(function (t) { setTimeout(lock, t); });
-                $(window).on('load', lock);
-            });
-        </script>
         <?php
     }
 
@@ -445,7 +385,7 @@ class ApiKeyConfig
             </tbody>
         </table>
         <?php printf(
-            '<p style="margin:10px 0 0;text-align:right;"><a href="%s">Manage keys &rarr;</a></p>',
+            '<p style="margin:10px 0 0;text-align:right;"><a href="%s">Manage Keys &rarr;</a></p>',
             esc_url(admin_url('edit.php?post_type=' . self::POST_TYPE))
         );
     }
@@ -508,17 +448,19 @@ class ApiKeyConfig
         }
 
         $method = isset($_SERVER['REQUEST_METHOD']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])) : '';
-        $route = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(strtok(wp_unslash($_SERVER['REQUEST_URI']), '?')) : '';
+        $route = isset($_SERVER['REQUEST_URI'])
+            ? sanitize_text_field(strtok(wp_unslash($_SERVER['REQUEST_URI']), '?'))
+            : '';
 
         // collapse repeat hits to the same endpoint within the throttle window
         // so a polling / high-traffic key does not flood the log or the db
         $window = (int) apply_filters('wpdev_api_key_log_throttle', self::LOG_THROTTLE);
         if (
-            $window > 0
-            && !empty($log)
-            && ($log[0]['method'] ?? '') === $method
-            && ($log[0]['route'] ?? '') === $route
-            && (time() - (int) ($log[0]['time'] ?? 0)) < $window
+            $window > 0 &&
+            !empty($log) &&
+            ($log[0]['method'] ?? '') === $method &&
+            ($log[0]['route'] ?? '') === $route &&
+            time() - (int) ($log[0]['time'] ?? 0) < $window
         ) {
             return;
         }
