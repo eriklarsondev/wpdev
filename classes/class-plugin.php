@@ -51,20 +51,17 @@ class RequiredPluginConfig extends Base
      */
     private function renderAdminNotice($plugin_name)
     {
-        add_action('admin_notices', function () use ($plugin_name) {
-            $label = ucwords($plugin_name);
+        $search = parent::formatLabel($plugin_name, '%20', false);
 
-            $url = admin_url('plugin-install.php') . '?s=' . parent::formatLabel($plugin_name, '%20', false);
-            $url .= '&tab=search&type=term';
+        add_action('admin_notices', function () use ($plugin_name, $search) {
+            $label = esc_html(ucwords($plugin_name));
+            $url = esc_url(admin_url('plugin-install.php') . '?s=' . $search . '&tab=search&type=term');
 
-            echo "
-            <div class=\"notice notice-error\">
-                <p>
-                    <strong>$label</strong> was not found.
-                    Click <a href=\"$url\">here</a> to install or activate this plugin.
-                </p>
-            </div>
-            ";
+            printf(
+                '<div class="notice notice-error"><p><strong>%s</strong> was not found. Click <a href="%s">here</a> to install or activate this plugin.</p></div>',
+                $label,
+                $url
+            );
         });
     }
 

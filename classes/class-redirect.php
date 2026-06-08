@@ -18,7 +18,7 @@ class RedirectConfig
      */
     public function initRedirect()
     {
-        if (!is_home() && !is_admin()) {
+        if (!is_front_page() && !is_admin()) {
             $redirect_url = home_url('/');
 
             wp_redirect($redirect_url, 301);

@@ -4,11 +4,6 @@ namespace wpdev;
 class Base
 {
     /**
-     * constuctor for base class
-     */
-    public function __construct() {}
-
-    /**
      * formats label and prepends custom prefix to label if applicable
      *
      * @param string $label
@@ -22,12 +17,13 @@ class Base
         $formattedLabel = trim(strtolower($label));
         $formattedLabel = preg_replace('/\s+/', $divider, $formattedLabel);
 
-        if ($prefix && substr($formattedLabel, 0, 5) !== 'wpdev') {
+        $isPrefixed = $formattedLabel === 'wpdev'
+            || strpos($formattedLabel, 'wpdev' . $divider) === 0;
+
+        if ($prefix && !$isPrefixed) {
             $formattedLabel = 'wpdev' . $divider . $formattedLabel;
-            // return formatted label with prefix
-            return $formattedLabel;
         }
-        // return formatted label without prefix
+
         return $formattedLabel;
     }
 }
