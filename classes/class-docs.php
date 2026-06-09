@@ -10,8 +10,8 @@ class DocsConfig
 
     /**
      * constructor for the API documentation page. registers the admin page
-     * and its Scalar API Reference assets; the OpenAPI spec is generated
-     * server-side and embedded directly into the page.
+     * and its Redoc assets; the OpenAPI spec is generated server-side and
+     * embedded directly into the page.
      */
     public function __construct()
     {
@@ -38,10 +38,8 @@ class DocsConfig
     }
 
     /**
-     * loads Scalar API Reference (from a CDN by default; override with the
-     * wpdev_scalar_src filter to self-host) on the docs page only, and
-     * initializes it against the generated spec. the REST nonce is injected
-     * into every request so "Try it out" works for the logged-in admin.
+     * loads Redoc (from a CDN by default; override with the wpdev_redoc_src
+     * filter to self-host) on the docs page only.
      *
      * @param string $hook current admin page hook
      *
@@ -53,19 +51,15 @@ class DocsConfig
             return;
         }
 
-        $src = apply_filters('wpdev_scalar_src', 'https://cdn.jsdelivr.net/npm/@scalar/api-reference');
-        wp_enqueue_script('wpdev-scalar', $src, [], null, true);
+        $src = apply_filters('wpdev_redoc_src', 'https://cdn.jsdelivr.net/npm/redoc/bundles/redoc.standalone.js');
+        wp_enqueue_script('wpdev-redoc', $src, [], null, true);
 
-        $config = [
-            'spec' => $this->specArray(),
-            'nonce' => wp_create_nonce('wp_rest')
-        ];
-        wp_add_inline_script('wpdev-scalar', 'window.wpdevDocs = ' . wp_json_encode($config) . ';', 'before');
-        wp_add_inline_script('wpdev-scalar', $this->initScript());
+        wp_add_inline_script('wpdev-redoc', 'window.wpdevDocs = ' . wp_json_encode(['spec' => $this->specArray()]) . ';', 'before');
+        wp_add_inline_script('wpdev-redoc', $this->initScript());
     }
 
     /**
-     * the Scalar API Reference bootstrap script
+     * Redoc bootstrap script
      *
      * @return string
      */
@@ -74,21 +68,11 @@ class DocsConfig
         return <<<JS
         (function () {
             function init() {
-                if (!window.Scalar || !window.Scalar.createApiReference) {
-                    return;
-                }
-                window.Scalar.createApiReference('#wpdev-scalar', {
-                    content: window.wpdevDocs.spec,
-                    layout: 'modern',
-                    darkMode: false,
-                    hideSearch: true,
-                    proxyUrl: '',
-                    onBeforeRequest: function (ctx) {
-                        try {
-                            ctx.requestBuilder.headers.set('X-WP-Nonce', window.wpdevDocs.nonce);
-                        } catch (e) {}
-                    }
-                });
+                Redoc.init(
+                    window.wpdevDocs.spec,
+                    { scrollYOffset: 32, hideDownloadButton: true },
+                    document.getElementById('redoc-container')
+                );
             }
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
@@ -100,7 +84,7 @@ class DocsConfig
     }
 
     /**
-     * renders the docs page shell that Scalar mounts into
+     * renders the docs page shell that Redoc mounts into
      *
      * @return void
      */
@@ -112,31 +96,12 @@ class DocsConfig
             #wpcontent { padding-left: 0; }
             #wpbody-content { padding: 0; float: none; }
             #wpfooter { display: none; }
-            #wpdev-scalar {
+            #redoc-container {
                 overflow: auto;
-                background: #fff;
                 height: calc(100vh - 32px);
             }
         </style>
-        <div id="wpdev-scalar"></div>
-        <script>
-            (function () {
-                function fit() {
-                    var el = document.getElementById('wpdev-scalar');
-                    if (!el) {
-                        return;
-                    }
-                    var top = el.getBoundingClientRect().top;
-                    el.style.height = (window.innerHeight - top) + 'px';
-                }
-                window.addEventListener('resize', fit);
-                window.addEventListener('load', fit);
-                if (document.readyState !== 'loading') {
-                    fit();
-                }
-                document.addEventListener('DOMContentLoaded', fit);
-            })();
-        </script>
+        <div id="redoc-container"></div>
         <?php
     }
 
@@ -167,10 +132,7 @@ class DocsConfig
         $routes = $server->get_routes();
 
         $allowed = apply_filters('wpdev_openapi_namespaces', []);
-        $excluded = apply_filters('wpdev_openapi_exclude_namespaces', [
-            'wp-block-editor/v1',
-            'wp-abilities/v1'
-        ]);
+        $excluded = apply_filters('wpdev_openapi_exclude_namespaces', ['wp-block-editor/v1', 'wp-abilities/v1']);
 
         $paths = [];
         $tag_set = [];
@@ -225,7 +187,7 @@ class DocsConfig
 
         $tag_descriptions = apply_filters('wpdev_openapi_tag_descriptions', [
             'wpdev/v1' => $this->loadMarkdown('tag-wpdev-v1.md'),
-            'wp/v2'    => $this->loadMarkdown('tag-wp-v2.md'),
+            'wp/v2' => $this->loadMarkdown('tag-wp-v2.md')
         ]);
 
         $tags = [];
@@ -241,12 +203,31 @@ class DocsConfig
         $rest_base = untrailingslashit(rest_url('/'));
         $version   = (string) (wp_get_theme()->get('Version') ?: '0.0.0');
 
-        $description = $this->loadMarkdown('api-intro.md', [
+        $tag_vars = [
             'site'      => $site,
             'rest_base' => $rest_base,
             'version'   => $version,
             'admin_url' => admin_url('admin.php?page=wpdev-api-keys'),
+        ];
+
+        $overview_tags = apply_filters('wpdev_openapi_overview_tags', [
+            'Getting Started' => 'tag-getting-started.md',
+            'Authentication'  => 'tag-authentication.md',
+            'Error Format'    => 'tag-error-format.md',
+            'Versioning'      => 'tag-versioning.md',
         ]);
+
+        $doc_tags = [];
+        foreach ($overview_tags as $name => $file) {
+            $tag = ['name' => $name];
+            $desc = $this->loadMarkdown($file, $tag_vars);
+            if ($desc) {
+                $tag['description'] = $desc;
+            }
+            $doc_tags[] = $tag;
+        }
+
+        $description = $this->loadMarkdown('api-intro.md', $tag_vars);
 
         $spec = [
             'openapi' => '3.0.3',
@@ -256,11 +237,12 @@ class DocsConfig
                 'description' => $description,
             ],
             'servers' => [['url' => untrailingslashit(rest_url('/'))]],
-            'tags' => $tags,
-            'security' => [
-                ['apiKeyAuth' => []],
-                ['cookieAuth' => []]
+            'tags' => array_merge($doc_tags, $tags),
+            'x-tagGroups' => [
+                ['name' => 'Overview',   'tags' => array_keys($overview_tags)],
+                ['name' => 'Endpoints',  'tags' => array_keys($tag_set)],
             ],
+            'security' => [['apiKeyAuth' => []], ['cookieAuth' => []]],
             'paths' => $paths,
             'components' => [
                 'securitySchemes' => [
@@ -268,13 +250,15 @@ class DocsConfig
                         'type' => 'apiKey',
                         'in' => 'header',
                         'name' => 'X-API-Key',
-                        'description' => 'API key issued under "API Keys" in wp-admin. Required on every external request; send it in the X-API-Key header.'
+                        'description' =>
+                            'API key issued under "API Keys" in wp-admin. Required on every external request; send it in the X-API-Key header.'
                     ],
                     'cookieAuth' => [
                         'type' => 'apiKey',
                         'in' => 'header',
                         'name' => 'X-WP-Nonce',
-                        'description' => 'WordPress REST cookie nonce, sent automatically when authenticated in wp-admin.'
+                        'description' =>
+                            'WordPress REST cookie nonce, sent automatically when authenticated in wp-admin.'
                     ]
                 ],
                 'schemas' => [
@@ -318,9 +302,7 @@ class DocsConfig
         if ($item_schema) {
             // collection endpoints accept per_page and return an array of the
             // item schema; everything else returns the schema as-is
-            $schema = isset($args['per_page'])
-                ? ['type' => 'array', 'items' => $item_schema]
-                : $item_schema;
+            $schema = isset($args['per_page']) ? ['type' => 'array', 'items' => $item_schema] : $item_schema;
             $ok['content'] = ['application/json' => ['schema' => $schema]];
         }
 
@@ -429,11 +411,27 @@ class DocsConfig
     private function errorResponse($status, $description)
     {
         $examples = [
-            400 => ['code' => 'rest_invalid_param',   'message' => 'Invalid parameter(s): context',             'data' => ['status' => 400]],
-            401 => ['code' => 'rest_not_logged_in',   'message' => 'You are not currently logged in.',          'data' => ['status' => 401]],
-            403 => ['code' => 'rest_forbidden',        'message' => 'Sorry, you are not allowed to do that.',   'data' => ['status' => 403]],
-            404 => ['code' => 'rest_post_invalid_id',  'message' => 'Invalid post ID.',                         'data' => ['status' => 404]],
-            500 => ['code' => 'rest_unknown_error',    'message' => 'An unknown error occurred.',               'data' => ['status' => 500]],
+            400 => [
+                'code' => 'rest_invalid_param',
+                'message' => 'Invalid parameter(s): context',
+                'data' => ['status' => 400]
+            ],
+            401 => [
+                'code' => 'rest_not_logged_in',
+                'message' => 'You are not currently logged in.',
+                'data' => ['status' => 401]
+            ],
+            403 => [
+                'code' => 'rest_forbidden',
+                'message' => 'Sorry, you are not allowed to do that.',
+                'data' => ['status' => 403]
+            ],
+            404 => ['code' => 'rest_post_invalid_id', 'message' => 'Invalid post ID.', 'data' => ['status' => 404]],
+            500 => [
+                'code' => 'rest_unknown_error',
+                'message' => 'An unknown error occurred.',
+                'data' => ['status' => 500]
+            ]
         ];
 
         return [
@@ -443,11 +441,15 @@ class DocsConfig
                     'schema' => [
                         'type' => 'object',
                         'properties' => [
-                            'code'    => ['type' => 'string'],
+                            'code' => ['type' => 'string'],
                             'message' => ['type' => 'string'],
-                            'data'    => ['type' => 'object', 'properties' => ['status' => ['type' => 'integer']]]
+                            'data' => ['type' => 'object', 'properties' => ['status' => ['type' => 'integer']]]
                         ],
-                        'example' => $examples[$status] ?? ['code' => 'rest_error', 'message' => 'An error occurred.', 'data' => ['status' => $status]]
+                        'example' => $examples[$status] ?? [
+                            'code' => 'rest_error',
+                            'message' => 'An error occurred.',
+                            'data' => ['status' => $status]
+                        ]
                     ]
                 ]
             ]
@@ -474,9 +476,13 @@ class DocsConfig
 
         // build a concrete path that matches the route's pattern (ids -> 1,
         // other params -> a token) and ask for its schema via OPTIONS
-        $probe = preg_replace_callback('#\{([^}]+)\}#', function ($matches) {
-            return preg_match('/id$/i', $matches[1]) ? '1' : 'sample';
-        }, $path);
+        $probe = preg_replace_callback(
+            '#\{([^}]+)\}#',
+            function ($matches) {
+                return preg_match('/id$/i', $matches[1]) ? '1' : 'sample';
+            },
+            $path
+        );
 
         $response = rest_do_request(new \WP_REST_Request('OPTIONS', $probe));
         $schema = null;
@@ -506,14 +512,19 @@ class DocsConfig
             return $schema;
         }
 
-        foreach (['context', 'arg_options', 'sanitize_callback', 'validate_callback', '$schema', 'readonly', 'links'] as $key) {
+        foreach (
+            ['context', 'arg_options', 'sanitize_callback', 'validate_callback', '$schema', 'readonly', 'links']
+            as $key
+        ) {
             unset($schema[$key]);
         }
 
         if (isset($schema['type']) && is_array($schema['type'])) {
-            $types = array_values(array_filter($schema['type'], function ($t) {
-                return $t !== 'null';
-            }));
+            $types = array_values(
+                array_filter($schema['type'], function ($t) {
+                    return $t !== 'null';
+                })
+            );
             if (count($types) !== count($schema['type'])) {
                 $schema['nullable'] = true;
             }

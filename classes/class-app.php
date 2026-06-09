@@ -24,7 +24,7 @@ class AppConfig
         if ($printed) {
             return;
         }
-        $printed = true; ?>
+        $printed = true;?>
         <style>
             .wpdev-frontend {
                 margin:0;
@@ -132,10 +132,10 @@ class AppConfig
                     <span class="dashicons dashicons-admin-site-alt3"></span>
                     <span class="wpdev-frontend-meta">
                         <span class="wpdev-frontend-eyebrow">External App</span>
-                        <span class="wpdev-frontend-empty">Not configured yet</span>
+                        <span class="wpdev-frontend-empty">Not Configured</span>
                     </span>
                 </div>
-                <a href="%s" class="wpdev-frontend-btn">Configure app URL</a>',
+                <a href="%s" class="wpdev-frontend-btn">Configure URL</a>',
                 esc_url(admin_url('customize.php?autofocus[control]=wpdev_frontend_url'))
             );
         }
